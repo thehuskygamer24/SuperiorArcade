@@ -40,13 +40,15 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
 <body>
 <!-- Optional: paste your own Firebase web-app config here to get real cross-device multiplayer.
      Example: window.MY_FIREBASE_CONFIG = { apiKey:"...", authDomain:"...", projectId:"...", appId:"..." }; -->
-<script>window.MY_FIREBASE_CONFIG = {apiKey: "AIzaSyDuE-Dcje8X7IkvkRNYpO4dJC1RN2RSgok",
+<script>window.MY_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDuE-Dcje8X7IkvkRNYpO4dJC1RN2RSgok",
   authDomain: "superior-arcade.firebaseapp.com",
   projectId: "superior-arcade",
   storageBucket: "superior-arcade.firebasestorage.app",
   messagingSenderId: "614544099744",
   appId: "1:614544099744:web:aeddde3a75568adf99fcc5",
-  measurementId: "G-164F2Q0MW6"};</script>
+  measurementId: "G-164F2Q0MW6"
+};</script>
 <script>window.ADMIN_EMAILS = ['huskygamer97@gmail.com']; // your Google email(s), e.g. ['you@gmail.com']</script>
 
 <div class="cab">
@@ -57,6 +59,7 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
       <span class="badge" id="roomBadge">ROOM: OCEAN HAVEN</span>
       <span class="badge gold" id="weatherBadge">WEATHER: DAY</span>
       <span class="badge" id="netBadge" title="">NET: CONNECTING…</span>
+      <button class="btn blue hidden" id="signInBtn">SIGN IN WITH GOOGLE</button>
     </div>
     <div class="row" id="freeHud">
       <span>ONLINE: <b id="onlineVal">1</b></span>
@@ -216,7 +219,7 @@ async function connectFirebase() {
   const [A, Au, F] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]);
   const app = A.initializeApp(cfg), auth = Au.getAuth(app), db = F.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   $('googleBtn').onclick = () => Au.signInWithPopup(auth, new Au.GoogleAuthProvider()).catch(e => $('loginErr').textContent = 'Sign-in failed: ' + (e.code || e.message));
-  const user = await new Promise(res => { const un = Au.onAuthStateChanged(auth, u => { if (u) { un(); res(u); } else show('loginModal', true); }); });
+  const user = await new Promise(res => { const un = Au.onAuthStateChanged(auth, u => { if (u && !u.isAnonymous) { un(); res(u); } else show('loginModal', true); }); });
   show('loginModal', false); myId = user.uid;
   isAdmin = (window.ADMIN_EMAILS || []).map(x => x.toLowerCase()).includes((user.email || '').toLowerCase()); show('adminQuickBtn', isAdmin);
   const col = n => F.collection(db, 'artifacts', appId, 'public', 'data', n), dref = (n, id) => F.doc(db, 'artifacts', appId, 'public', 'data', n, id);
@@ -256,6 +259,7 @@ function push(force) {
 }
 function updateNetUI() {
   const nb = $('netBadge'), k = net.kind;
+  $('signInBtn').classList.toggle('hidden', k === 'online' || !window.MY_FIREBASE_CONFIG);
   nb.textContent = k === 'online' ? 'NET: ONLINE' : k === 'tabs' ? 'NET: LOCAL TABS' : 'NET: SOLO';
   nb.title = k === 'online' ? 'Connected to Firebase. Captains on any device can join.' : 'No Firebase config found: only tabs of this same browser can see each other. Add your config at the top of the file.';
   const vis = fresh(), showBots = vis.length === 0 && k !== 'online';
@@ -604,7 +608,7 @@ document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => setWeather(
 $('annBtn').onclick = () => { const v = $('annInput').value.trim().slice(0, 80); if (!v) return; logChat('📢 BROADCAST', v, '#ff4444'); net.event({ type: 'announce', text: v, from: myId, t: Date.now() }); $('annInput').value = ''; };
 function renderBans() { $('banList').innerHTML = bans.size ? [...bans.values()].map(b => `<div class="pl"><span>🚫 <b>${esc(b.name || '?')}</b> [${esc(String(b.uid).slice(0, 5))}]</span><button class="btn" data-unban="${esc(b.uid)}">UNBAN</button></div>`).join('') : '<div class="mut">No bans.</div>'; }
 $('banList').onclick = e => { const u = e.target.closest('[data-unban]'); if (u) net.unban(u.dataset.unban); };
-$('skipLogin').onclick = () => show('loginModal', false); $('netBadge').onclick = () => { if (net.kind !== 'online' && window.MY_FIREBASE_CONFIG) show('loginModal', true); };
+$('signInBtn').onclick = () => show('loginModal', true); $('skipLogin').onclick = () => show('loginModal', false); $('netBadge').onclick = () => { if (net.kind !== 'online' && window.MY_FIREBASE_CONFIG) show('loginModal', true); };
 $('adminList').onclick = e => { const bb = e.target.closest('[data-ban]'); if (bb) { const p = players.get(bb.dataset.ban); if (confirm('Ban ' + (p ? p.name : 'this player') + ' permanently?')) { net.ban(bb.dataset.ban, p ? p.name : ''); players.delete(bb.dataset.ban); logChat('ADMIN', 'Player banned.', '#ff6b6b'); updateNetUI(); } return; } const b = e.target.closest('[data-kick]'); if (!b) return; players.delete(b.dataset.kick); net.event({ type: 'kick', target: b.dataset.kick, from: myId, t: Date.now() }); logChat('ADMIN', 'Player removed.', '#ff6b6b'); updateNetUI(); };
 
 addEventListener('keydown', e => {
@@ -626,8 +630,9 @@ renderRooms(); updateNetUI(); applyTier(0);
 requestAnimationFrame(loop);
 (async () => {
   let ok = false;
-  try { ok = await connectFirebase(); } catch (e) { console.warn('Firebase unavailable:', e); }
+  try { ok = await connectFirebase(); } catch (e) { console.warn('Firebase unavailable:', e); logChat('SYSTEM', 'Online setup failed: ' + (e.code || e.message), '#ff6b6b'); }
   if (!ok && net.kind === 'solo') connectTabs();
+  if (!window.MY_FIREBASE_CONFIG) logChat('SYSTEM', 'No Firebase config found (line 43), so Google sign-in and online play are off.', '#ff6b6b');
   push(true); updateNetUI();
 })();
 })();
