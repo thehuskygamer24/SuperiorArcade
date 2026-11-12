@@ -40,14 +40,14 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
 <body>
 <!-- Optional: paste your own Firebase web-app config here to get real cross-device multiplayer.
      Example: window.MY_FIREBASE_CONFIG = { apiKey:"...", authDomain:"...", projectId:"...", appId:"..." }; -->
-<script>window.MY_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyDuE-Dcje8X7IkvkRNYpO4dJC1RN2RSgok",
+<script>window.MY_FIREBASE_CONFIG = {apiKey: "AIzaSyDuE-Dcje8X7IkvkRNYpO4dJC1RN2RSgok",
   authDomain: "superior-arcade.firebaseapp.com",
   projectId: "superior-arcade",
   storageBucket: "superior-arcade.firebasestorage.app",
   messagingSenderId: "614544099744",
   appId: "1:614544099744:web:aeddde3a75568adf99fcc5",
-    measurementId: "G-164F2Q0MW6" };</script>
+  measurementId: "G-164F2Q0MW6"};</script>
+<script>window.ADMIN_EMAILS = ['huskygamer97@gmail.com']; // your Google email(s), e.g. ['you@gmail.com']</script>
 
 <div class="cab">
   <div class="bar top">
@@ -63,12 +63,14 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
       <span>CAPTAIN: <b id="hudName">CAPTAIN</b></span>
       <button class="btn menuBtn">MAIN MENU</button>
       <button class="btn soundBtn">SOUND: ON</button>
+      <button class="btn gfxBtn" title="Graphics quality">GFX: AUTO</button>
     </div>
     <div class="row hidden" id="classicHud">
       <span>LEVEL <b id="levelVal">01</b>/80</span><span>HULL <b id="hpVal">1200</b></span>
       <span>SCORE <b id="scoreVal">000000</b></span><span>WEAPON <b id="weaponVal">LASER</b></span>
       <button class="btn menuBtn">MAIN MENU</button>
       <button class="btn soundBtn">SOUND: ON</button>
+      <button class="btn gfxBtn" title="Graphics quality">GFX: AUTO</button>
     </div>
   </div>
 
@@ -108,6 +110,12 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
   <div class="grid"><button class="btn" id="serversBtn">🌐 SERVERS</button><button class="btn" id="controlsBtn">🎮 CONTROLS</button></div>
 </div></div>
 
+<div class="ov hidden" id="loginModal" style="z-index:60"><div class="panel c">
+  <h2>Sign in to play online</h2><p class="mut">Online play uses your Google account so rule-breakers can be banned. Other players never see your Google name or email.</p>
+  <button class="btn blue" id="googleBtn" style="padding:10px">Sign in with Google</button><div class="mut" id="loginErr"></div>
+  <button class="btn" id="skipLogin">Play solo instead</button>
+</div></div>
+<div class="ov hidden" id="bannedModal" style="z-index:70"><div class="panel c"><h2 style="color:#f87171">You are banned</h2><p class="mut">An admin banned this account from online play.</p></div></div>
 <div class="ov hidden" id="endModal"><div class="panel c">
   <h1 style="font-size:26px;color:#fcd34d" id="endTitle">VOYAGE COMPLETE</h1><p id="endText"></p>
   <div class="grid"><button class="btn gold" id="againBtn">PLAY AGAIN</button><button class="btn" id="endMenuBtn">MAIN MENU</button></div>
@@ -131,6 +139,7 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
     <div class="grid"><button class="btn" data-w="day">☀ Day</button><button class="btn" data-w="sunset">🌅 Sunset</button><button class="btn" data-w="night">🌙 Night</button><button class="btn" data-w="stormy">🌫 Calm Mist</button></div></div>
   <div class="box"><div class="cap">Broadcast</div><div class="row"><input type="text" id="annInput" placeholder="Announcement…" style="flex:1"><button class="btn blue" id="annBtn">SEND</button></div></div>
   <div class="box"><div class="sp cap"><span>Captains in this room</span><span class="mut" id="adminCount"></span></div><div id="adminList" style="display:flex;flex-direction:column;gap:5px;max-height:150px;overflow-y:auto"></div></div>
+  <div class="box"><div class="cap">Banned accounts</div><div id="banList" style="display:flex;flex-direction:column;gap:5px;max-height:120px;overflow-y:auto"></div></div>
 </div></div>
 
 <script>
@@ -138,9 +147,10 @@ input[type=color]{width:40px;height:30px;padding:2px;background:none;border:1px 
 const $ = id => document.getElementById(id), cv = $('game'), ctx = cv.getContext('2d');
 const W = 1024, H = 576, TAU = Math.PI * 2, rnd = Math.random;
 // HI-RES: internal canvas is 2-3x the logical 1024x576 size, drawn with smooth filtering
-const S = Math.min(3, Math.max(2, Math.ceil(window.devicePixelRatio || 2)));
+let S = 2, GL = 1, tier = 0, gfxMode = 'AUTO';
 cv.width = W * S; cv.height = H * S; ctx.imageSmoothingQuality = 'high';
 
+if (!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) { this.moveTo(x + r, y); this.arcTo(x + w, y, x + w, y + h, r); this.arcTo(x + w, y + h, x, y + h, r); this.arcTo(x, y + h, x, y, r); this.arcTo(x, y, x + w, y, r); this.closePath(); };
 /* ---------- audio ---------- */
 let soundOn = true, ac = null;
 const actx = () => { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); return ac; };
@@ -164,6 +174,7 @@ const keys = {};
 const boat = { name: 'Captain Superior', color: '#00aaff', x: 280, y: 300, angle: 0, speed: 0, chat: '', chatAt: 0 };
 const players = new Map();      // remote captains: id -> state (+ smoothed rx/ry/ra, seen)
 const wakes = [];
+let vis = [];
 const bots = [
   { name: 'Capt. Neptune', color: '#ff5533', x: 720, y: 180, angle: 2.1, speed: 1.8 },
   { name: 'HMS Triton', color: '#33ffaa', x: 200, y: 440, angle: -.8, speed: 1.5 }];
@@ -173,7 +184,9 @@ const rooms = [['Ocean Haven', 'Central social hub with an active lighthouse'], 
 
 /* ---------- MULTIPLAYER ---------- */
 // Backends: 'online' = Firebase Firestore (real cross-device), 'tabs' = BroadcastChannel (same browser only), 'solo' = bots.
-let net = { kind: 'solo', send() {}, chat() {}, event() {}, bye() {} };
+const mkSolo = () => ({ kind: 'solo', send() {}, chat() {}, event() {}, bye() {}, ban() {}, unban() {} });
+let net = mkSolo();
+const bans = new Map();
 const okColor = c => /^#[0-9a-f]{6}$/i.test(c) ? c : '#00aaff';
 const fresh = () => [...players.values()].filter(p => p.room === room && Date.now() - p.seen < 6000);
 
@@ -198,38 +211,46 @@ function onEvent(e) {
 }
 
 async function connectFirebase() {
-  let cfg = null;
-  try { cfg = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : window.MY_FIREBASE_CONFIG; } catch (e) {}
-  if (!cfg) return false;
-  const appId = typeof __app_id !== 'undefined' ? __app_id : 'ss-superior-game', B = 'https://www.gstatic.com/firebasejs/11.6.1/';
+  const cfg = window.MY_FIREBASE_CONFIG; if (!cfg) return false;
+  const appId = 'ss-superior-game', B = 'https://www.gstatic.com/firebasejs/11.6.1/';
   const [A, Au, F] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]);
-  const app = A.initializeApp(cfg), auth = Au.getAuth(app), db = F.getFirestore(app);
-  const cred = (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) ? await Au.signInWithCustomToken(auth, __initial_auth_token) : await Au.signInAnonymously(auth);
-  myId = cred.user.uid;
-  // Path rule: collection = odd segment count, document = even segment count.
+  const app = A.initializeApp(cfg), auth = Au.getAuth(app), db = F.initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  $('googleBtn').onclick = () => Au.signInWithPopup(auth, new Au.GoogleAuthProvider()).catch(e => $('loginErr').textContent = 'Sign-in failed: ' + (e.code || e.message));
+  const user = await new Promise(res => { const un = Au.onAuthStateChanged(auth, u => { if (u) { un(); res(u); } else show('loginModal', true); }); });
+  show('loginModal', false); myId = user.uid;
+  isAdmin = (window.ADMIN_EMAILS || []).map(x => x.toLowerCase()).includes((user.email || '').toLowerCase()); show('adminQuickBtn', isAdmin);
   const col = n => F.collection(db, 'artifacts', appId, 'public', 'data', n), dref = (n, id) => F.doc(db, 'artifacts', appId, 'public', 'data', n, id);
-  const watch = (n, fn, removed) => F.onSnapshot(col(n), s => s.docChanges().forEach(c => {
+  const q = f => f.catch(e => console.warn('Firestore write', e.code || e));
+  const mine = await F.getDoc(dref('ss_bans', myId)).catch(() => null);
+  if (mine && mine.exists()) { show('bannedModal', true); return 'banned'; }
+  F.onSnapshot(dref('ss_bans', myId), s => { if (s.exists()) { net.bye(); players.clear(); net = mkSolo(); show('bannedModal', true); } }, () => {});
+  if (isAdmin) F.onSnapshot(col('ss_bans'), s => { s.docChanges().forEach(c => c.type === 'removed' ? bans.delete(c.doc.id) : bans.set(c.doc.id, c.doc.data())); renderBans(); }, e => console.warn('bans', e.code));
+  const watch = (n, fn, removed, qry) => F.onSnapshot(qry || col(n), s => s.docChanges().forEach(c => {
     if (c.type === 'removed') { if (removed) removed(c.doc.id); } else if (n === 'ss_players' || c.type === 'added') fn(c.doc.data());
   }), err => console.warn('Firestore', n, err.code || err));
-  watch('ss_players', onPlayer, id => players.delete(id)); watch('ss_chat', onChat); watch('ss_events', onEvent);
-  const q = f => f.catch(e => console.warn('Firestore write', e.code || e));
+  const t0 = Date.now(), recent = (n, ms) => F.query(col(n), F.where('t', '>', t0 - ms));
+  watch('ss_players', onPlayer, id => players.delete(id), recent('ss_players', 30000)); watch('ss_chat', onChat, null, recent('ss_chat', 20000)); watch('ss_events', onEvent, null, recent('ss_events', 20000));
+  let busy = false, pend = null;   // never queue stale position writes: latest wins
+  const sendP = p => { if (busy) { pend = p; return; } busy = true; q(F.setDoc(dref('ss_players', myId), p)).finally(() => { busy = false; if (pend) { const x = pend; pend = null; sendP(x); } }); };
   net = { kind: 'online',
-    send: p => q(F.setDoc(dref('ss_players', myId), p)),
+    send: sendP,
     chat: m => q(F.setDoc(dref('ss_chat', myId + '_' + m.t), m)),
     event: e => q(F.setDoc(dref('ss_events', myId + '_' + e.t), e)),
-    bye: () => q(F.deleteDoc(dref('ss_players', myId))) };
+    bye: () => q(F.deleteDoc(dref('ss_players', myId))),
+    ban: (id, name) => Promise.all([q(F.setDoc(dref('ss_bans', id), { uid: id, name: name || '', by: myId, t: Date.now() })), q(F.deleteDoc(dref('ss_players', id)))]),
+    unban: id => q(F.deleteDoc(dref('ss_bans', id))) };
   return true;
 }
 function connectTabs() {
   if (!window.BroadcastChannel) return;
   const bc = new BroadcastChannel('ss-superior'), post = (k, v) => { try { bc.postMessage({ k, v }); } catch (e) {} };
   bc.onmessage = e => { const m = e.data || {}; if (m.k === 'p') onPlayer(m.v); else if (m.k === 'c') onChat(m.v); else if (m.k === 'e') onEvent(m.v); else if (m.k === 'b') players.delete(m.v); };
-  net = { kind: 'tabs', send: p => post('p', p), chat: m => post('c', m), event: e => post('e', e), bye: () => post('b', myId) };
+  net = { kind: 'tabs', send: p => post('p', p), chat: m => post('c', m), event: e => post('e', e), bye: () => post('b', myId), ban() {}, unban() {} };
 }
 let lastPush = 0;
 function push(force) {
   const n = Date.now();
-  if (mode !== 'freeroam' || (!force && n - lastPush < (Math.abs(boat.speed) > .05 || turning ? 120 : 2000))) return;
+  if (mode !== 'freeroam' || (!force && n - lastPush < (Math.abs(boat.speed) > .05 || turning ? 90 : 2000))) return;
   lastPush = n;
   net.send({ id: myId, name: boat.name, color: boat.color, x: Math.round(boat.x), y: Math.round(boat.y), angle: +boat.angle.toFixed(2), speed: +boat.speed.toFixed(1), room, t: n });
 }
@@ -239,9 +260,10 @@ function updateNetUI() {
   nb.title = k === 'online' ? 'Connected to Firebase. Captains on any device can join.' : 'No Firebase config found: only tabs of this same browser can see each other. Add your config at the top of the file.';
   const vis = fresh(), showBots = vis.length === 0 && k !== 'online';
   $('onlineVal').textContent = 1 + vis.length + (showBots ? bots.length : 0);
+  if ($('adminModal').classList.contains('hidden')) return;
   $('adminCount').textContent = 'Active: ' + (1 + vis.length);
   $('adminList').innerHTML = `<div class="pl"><span>⚓ <b>${esc(boat.name)}</b> (you)</span></div>` +
-    vis.map(p => `<div class="pl"><span>🚤 <b>${esc(p.name)}</b> [${esc(p.id.slice(0, 5))}]</span><button class="btn red" data-kick="${esc(p.id)}">KICK</button></div>`).join('');
+    vis.map(p => `<div class="pl"><span>🚤 <b>${esc(p.name)}</b> [${esc(p.id.slice(0, 5))}]</span><span class="row"><button class="btn" data-kick="${esc(p.id)}">KICK</button><button class="btn red" data-ban="${esc(p.id)}">BAN</button></span></div>`).join('');
 }
 setInterval(() => { players.forEach((p, id) => { if (Date.now() - p.seen > 15000) players.delete(id); }); updateNetUI(); }, 1000);
 setInterval(() => push(true), 2000);
@@ -277,7 +299,11 @@ function mkTex(n, rgb, a, count, rmax) {
   }
   return ctx.createPattern(c, 'repeat');
 }
-const texA = mkTex(256, '170,235,255', .16, 60, 26), texB = mkTex(256, '0,30,70', .2, 50, 34), texC = mkTex(128, '255,255,255', .5, 40, 3);
+let texA, texB, texC, bgC = null, bgKey = '', vigC = null;
+const buildTex = () => { texA = mkTex(256, '170,235,255', .16, 60, 26); texB = mkTex(256, '0,30,70', .2, 50, 34); texC = mkTex(128, '255,255,255', .5, 40, 3); };
+function buildVig() { vigC = document.createElement('canvas'); vigC.width = W * S; vigC.height = H * S; const g = vigC.getContext('2d'); g.scale(S, S);
+  const r = g.createRadialGradient(W / 2, H / 2, H * .45, W / 2, H / 2, H * .95); r.addColorStop(0, 'rgba(0,5,15,0)'); r.addColorStop(1, 'rgba(0,5,15,.5)'); g.fillStyle = r; g.fillRect(0, 0, W, H); }
+function applyTier(t) { tier = t; S = [2, 2, 1.5, 1][t]; GL = t ? 0 : 1; cv.width = W * S; cv.height = H * S; ctx.imageSmoothingQuality = 'high'; buildTex(); buildVig(); bgKey = ''; }
 const lg = (x0, y0, x1, y1, s) => { const g = ctx.createLinearGradient(x0, y0, x1, y1); s.forEach((c, i) => g.addColorStop(i / (s.length - 1), c)); return g; };
 const rg = (x, y, r0, r1, s) => { const g = ctx.createRadialGradient(x, y, r0, x, y, r1); s.forEach((c, i) => g.addColorStop(i / (s.length - 1), c)); return g; };
 const circ = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); };
@@ -286,22 +312,30 @@ const pat = (p, tx, ty) => { p.setTransform(new DOMMatrix([1 / S, 0, 0, 1 / S, t
 
 /* ---------- drawing: world ---------- */
 const PAL = { day: ['#0a5d8f', '#0e86b4', '#052c52'], sunset: ['#4a2160', '#c1587c', '#2a1245'], night: ['#030814', '#0b2a52', '#020918'], stormy: ['#10202c', '#31515f', '#0a141b'] };
-function drawSea() {
-  const p = PAL[weather];
-  ctx.fillStyle = lg(0, 0, 0, H, p); ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = .9; ctx.fillStyle = pat(texA, frame * .3, frame * .14); ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = .6; ctx.fillStyle = pat(texB, -frame * .18, frame * .1 + 90); ctx.fillRect(0, 0, W, H);
-  ctx.globalAlpha = .35 + .15 * Math.sin(frame * .04); ctx.fillStyle = pat(texC, frame * .5, -frame * .3); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-  ctx.lineWidth = 1.4;
-  for (let k = 0; k < 9; k++) {
-    ctx.strokeStyle = `rgba(200,240,255,${.05 + .015 * (k % 3)})`; ctx.beginPath();
-    for (let x = 0; x <= W; x += 10) { const y = 30 + k * 62 + Math.sin(x * .017 + frame * .02 * (1 + k % 3 * .4) + k) * 4 + Math.sin(x * .043 - frame * .03 + k * 2) * 2; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
-    ctx.stroke();
-  }
+function buildBG() {
+  bgC = document.createElement('canvas'); bgC.width = W * S; bgC.height = H * S; const g = bgC.getContext('2d'); g.scale(S, S);
+  let gr = g.createLinearGradient(0, 0, 0, H); PAL[weather].forEach((c, i) => gr.addColorStop(i / 2, c)); g.fillStyle = gr; g.fillRect(0, 0, W, H);
   const glow = { day: 'rgba(255,244,205,.28)', sunset: 'rgba(255,150,90,.32)', night: 'rgba(170,200,255,.14)', stormy: 'rgba(210,225,235,.12)' }[weather];
-  ctx.fillStyle = rg(W * .82, -30, 0, 460, [glow, 'rgba(255,255,255,0)']); ctx.fillRect(0, 0, W, H);
-  if (weather === 'night') { ctx.fillStyle = 'rgba(0,0,25,.25)'; ctx.fillRect(0, 0, W, H); }
-  if (weather === 'stormy') { ctx.fillStyle = 'rgba(190,205,215,.1)'; ctx.fillRect(0, 0, W, H); }
+  gr = g.createRadialGradient(W * .82, -30, 0, W * .82, -30, 460); gr.addColorStop(0, glow); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  if (weather === 'night') { g.fillStyle = 'rgba(0,0,25,.25)'; g.fillRect(0, 0, W, H); }
+  if (weather === 'stormy') { g.fillStyle = 'rgba(190,205,215,.1)'; g.fillRect(0, 0, W, H); }
+  bgKey = weather + S;
+}
+function drawSea() {
+  if (bgKey !== weather + S) buildBG();
+  ctx.drawImage(bgC, 0, 0, W, H);
+  ctx.globalAlpha = .9; ctx.fillStyle = pat(texA, frame * .3, frame * .14); ctx.fillRect(0, 0, W, H);
+  if (tier < 3) { ctx.globalAlpha = .6; ctx.fillStyle = pat(texB, -frame * .18, frame * .1 + 90); ctx.fillRect(0, 0, W, H); }
+  if (tier < 2) { ctx.globalAlpha = .35 + .15 * Math.sin(frame * .04); ctx.fillStyle = pat(texC, frame * .5, -frame * .3); ctx.fillRect(0, 0, W, H); }
+  ctx.globalAlpha = 1;
+  if (tier < 3) {
+    ctx.lineWidth = 1.4; const st = tier ? 20 : 10;
+    for (let k = 0; k < 9; k++) {
+      ctx.strokeStyle = `rgba(200,240,255,${.05 + .015 * (k % 3)})`; ctx.beginPath();
+      for (let x = 0; x <= W; x += st) { const y = 30 + k * 62 + Math.sin(x * .017 + frame * .02 * (1 + k % 3 * .4) + k) * 4 + Math.sin(x * .043 - frame * .03 + k * 2) * 2; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.stroke();
+    }
+  }
 }
 function palm(x, y, s) {
   ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
@@ -314,7 +348,7 @@ function drawIsland(is) {
   ctx.save(); ctx.translate(is.x, is.y);
   const pulse = Math.sin(frame * .03 + is.x) * 2;
   circ(0, 0, is.r + 26 + pulse); ctx.fillStyle = rg(0, 0, is.r, is.r + 26 + pulse, ['rgba(110,240,225,.6)', 'rgba(110,240,225,0)']); ctx.fill();
-  ctx.shadowColor = 'rgba(0,20,40,.6)'; ctx.shadowBlur = 18 * S; ctx.shadowOffsetY = 6 * S;
+  ctx.shadowColor = 'rgba(0,20,40,.6)'; ctx.shadowBlur = 8 * S * GL; ctx.shadowOffsetY = 4 * S * GL;
   circ(0, 0, is.r + 7); ctx.fillStyle = rg(0, 0, is.r - 4, is.r + 7, ['#f2dd94', '#d5b363']); ctx.fill();
   ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   circ(0, 0, is.r); ctx.fillStyle = rg(-is.r * .3, -is.r * .3, 4, is.r, ['#58b673', '#2f7d48', '#1d5733']); ctx.fill();
@@ -323,9 +357,9 @@ function drawIsland(is) {
     palm(-34, 26, .8); palm(36, -22, .7);
     ctx.save(); ctx.rotate(frame * .025);
     ctx.fillStyle = rg(0, 0, 10, 280, ['rgba(255,255,190,.7)', 'rgba(255,255,190,0)']); ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 280, -.22, .22); ctx.fill(); ctx.restore();
-    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8 * S; circ(0, 0, 17); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 8 * S * GL; circ(0, 0, 17); ctx.fillStyle = '#fff'; ctx.fill(); ctx.shadowBlur = 0;
     for (let i = 0; i < 3; i++) { circ(0, 0, 15 - i * 4.5); ctx.fillStyle = i % 2 ? '#fff' : '#c8333b'; ctx.fill(); }
-    circ(0, 0, 4); ctx.fillStyle = '#fff6a8'; ctx.shadowColor = '#ffe66b'; ctx.shadowBlur = 22 * S; ctx.fill(); ctx.shadowBlur = 0;
+    circ(0, 0, 4); ctx.fillStyle = '#fff6a8'; ctx.shadowColor = '#ffe66b'; ctx.shadowBlur = 22 * S * GL; ctx.fill(); ctx.shadowBlur = 0;
   } else if (is.type === 'palm') { for (let i = 0; i < 5; i++) palm(Math.cos(i * 1.26 + 1) * 24, Math.sin(i * 1.26 + 1) * 22, .8 + i % 2 * .15); }
   else { palm(18, -14, .85); palm(-6, 22, .7);
     for (let i = 0; i < 9; i++) { ctx.fillStyle = i % 2 ? '#8a5f36' : '#74502d'; ctx.fillRect(-is.r - 38 + i * 4.5, -9, 4.4, 18); }
@@ -338,7 +372,7 @@ function drawBuoy(b) {
   circ(0, 0, 13 + Math.sin(frame * .05 + b.phase) * 1.5); ctx.strokeStyle = 'rgba(255,255,255,.2)'; ctx.lineWidth = 1.5; ctx.stroke();
   circ(0, 0, 8); ctx.fillStyle = rg(-2, -3, 1, 9, ['#ff9a9a', '#d93b3b', '#8f1f26']); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.fillRect(-8, -1, 16, 2.5);
-  if (Math.sin(frame * .1 + b.phase) > 0) { ctx.shadowColor = '#ffff55'; ctx.shadowBlur = 16 * S; circ(0, -6, 3.5); ctx.fillStyle = '#ffffa8'; ctx.fill(); }
+  if (Math.sin(frame * .1 + b.phase) > 0) { ctx.shadowColor = '#ffff55'; ctx.shadowBlur = 16 * S * GL; circ(0, -6, 3.5); ctx.fillStyle = '#ffffa8'; ctx.fill(); }
   ctx.restore();
 }
 function drawWakes() {
@@ -384,8 +418,8 @@ function updateFree(dt) {
     if (d < lim) { const a = Math.atan2(boat.y - is.y, boat.x - is.x); boat.x += Math.cos(a) * (lim - d); boat.y += Math.sin(a) * (lim - d); boat.speed *= -.3; } });
   push(false);
   const k = 1 - Math.pow(.75, step);
-  players.forEach(p => { p.rx += (p.x - p.rx) * k; p.ry += (p.y - p.ry) * k; let d = p.angle - p.ra; d = Math.atan2(Math.sin(d), Math.cos(d)); p.ra += d * k; });
-  if (!fresh().length && net.kind !== 'online') bots.forEach(b => { b.x += Math.cos(b.angle) * b.speed * step; b.y += Math.sin(b.angle) * b.speed * step;
+  players.forEach(p => { const e = Math.min(24, (Date.now() - p.seen) / 16.67), tx = p.x + Math.cos(p.angle) * p.speed * e, ty = p.y + Math.sin(p.angle) * p.speed * e; p.rx += (tx - p.rx) * k; p.ry += (ty - p.ry) * k; let d = p.angle - p.ra; d = Math.atan2(Math.sin(d), Math.cos(d)); p.ra += d * k; });
+  if (!vis.length && net.kind !== 'online') bots.forEach(b => { b.x += Math.cos(b.angle) * b.speed * step; b.y += Math.sin(b.angle) * b.speed * step;
     if (b.x < 50 || b.x > W - 50 || b.y < 50 || b.y > H - 50) b.angle = Math.atan2(H / 2 - b.y, W / 2 - b.x) + (rnd() - .5); });
 }
 
@@ -461,9 +495,9 @@ function updateClassic(dt) {
 function drawShip() {
   ctx.save(); ctx.globalAlpha = ship.fade; ctx.translate(ship.x, ship.y + Math.sin(ship.bob) * 3); ctx.scale(1.35, 1.35);
   ctx.fillStyle = 'rgba(0,10,25,.3)'; ctx.beginPath(); ctx.ellipse(15, 26, 80, 8, 0, 0, TAU); ctx.fill();
-  if (flight > 0) { ctx.shadowColor = '#ffb94f'; ctx.shadowBlur = 24 * S; ctx.fillStyle = '#ff9c34';
+  if (flight > 0) { ctx.shadowColor = '#ffb94f'; ctx.shadowBlur = 24 * S * GL; ctx.fillStyle = '#ff9c34';
     for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(-10 - i * 13, -8 + i * 8); ctx.lineTo(-40 - i * 15 - rnd() * 6, i * 8); ctx.lineTo(-10 - i * 13, 8 + i * 8); ctx.fill(); } ctx.shadowBlur = 0; }
-  if (immune > 0) { ctx.strokeStyle = '#fff27b'; ctx.lineWidth = 4; ctx.shadowColor = '#fff27b'; ctx.shadowBlur = 18 * S; ctx.beginPath(); ctx.ellipse(53, 0, 82, 46, 0, 0, TAU); ctx.stroke(); ctx.shadowBlur = 0; }
+  if (immune > 0) { ctx.strokeStyle = '#fff27b'; ctx.lineWidth = 4; ctx.shadowColor = '#fff27b'; ctx.shadowBlur = 18 * S * GL; ctx.beginPath(); ctx.ellipse(53, 0, 82, 46, 0, 0, TAU); ctx.stroke(); ctx.shadowBlur = 0; }
   ctx.beginPath(); ctx.moveTo(-58, -15); ctx.lineTo(70, -15); ctx.quadraticCurveTo(88, -12, 91, -5); ctx.lineTo(75, 21); ctx.lineTo(-42, 21); ctx.lineTo(-62, 6); ctx.closePath();
   ctx.fillStyle = lg(0, -15, 0, 21, ['#1c5190', '#092d57', '#051a36']); ctx.fill(); ctx.strokeStyle = '#b8eaff'; ctx.lineWidth = 2; ctx.stroke();
   ctx.strokeStyle = '#f04b4b'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-48, 14); ctx.lineTo(77, 14); ctx.stroke();
@@ -475,7 +509,7 @@ function drawShip() {
 function drawHazard(h) {
   ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(Math.sin(h.spin) * .08); const r = h.r;
   if (h.kind === 'iceberg') {
-    ctx.shadowColor = 'rgba(150,240,255,.5)'; ctx.shadowBlur = 14 * S; ctx.fillStyle = lg(-r, -r, r, r, ['#f4ffff', '#a8e9f5', '#4b9ebc']); ctx.strokeStyle = '#eaffff'; ctx.lineWidth = 2;
+    ctx.shadowColor = 'rgba(150,240,255,.5)'; ctx.shadowBlur = 14 * S * GL; ctx.fillStyle = lg(-r, -r, r, r, ['#f4ffff', '#a8e9f5', '#4b9ebc']); ctx.strokeStyle = '#eaffff'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(-r, -r * .25); ctx.lineTo(-r * .45, -r); ctx.lineTo(r * .1, -r * .75); ctx.lineTo(r, r * .15); ctx.lineTo(r * .55, r * .7); ctx.lineTo(-r * .7, r * .6); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.shadowBlur = 0; ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.moveTo(-r * .45, -r * .9); ctx.lineTo(-r * .1, -r * .2); ctx.lineTo(r * .3, r * .4); ctx.stroke();
   } else if (h.kind === 'rock') {
@@ -483,21 +517,21 @@ function drawHazard(h) {
     for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, q = r * (.75 + ((i * 17) % 4) / 10); ctx.lineTo(Math.cos(a) * q, Math.sin(a) * q); } ctx.closePath(); ctx.fill(); ctx.stroke();
   } else if (h.kind === 'mine') {
     ctx.strokeStyle = '#ffc4a6'; ctx.lineWidth = 2.5; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * .6, Math.sin(a) * r * .6); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke(); }
-    ctx.shadowColor = '#ff4a3a'; ctx.shadowBlur = (10 + 6 * Math.sin(frame * .2)) * S; circ(0, 0, r * .7); ctx.fillStyle = rg(-r * .2, -r * .2, 1, r * .7, ['#ff9a85', '#db4b42', '#7a1b17']); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.shadowColor = '#ff4a3a'; ctx.shadowBlur = (10 + 6 * Math.sin(frame * .2)) * S * GL; circ(0, 0, r * .7); ctx.fillStyle = rg(-r * .2, -r * .2, 1, r * .7, ['#ff9a85', '#db4b42', '#7a1b17']); ctx.fill(); ctx.shadowBlur = 0;
     ctx.fillStyle = '#ffe17a'; ctx.fillRect(-3, -3, 6, 6);
   } else {
-    ctx.shadowColor = '#a65cff'; ctx.shadowBlur = 18 * S; ctx.strokeStyle = '#c47cff'; ctx.lineWidth = 5; circ(0, 0, r); ctx.stroke();
+    ctx.shadowColor = '#a65cff'; ctx.shadowBlur = 18 * S * GL; ctx.strokeStyle = '#c47cff'; ctx.lineWidth = 5; circ(0, 0, r); ctx.stroke();
     ctx.rotate(frame * .08); ctx.beginPath(); ctx.moveTo(-r, -r); ctx.lineTo(r, r); ctx.moveTo(-r, r); ctx.lineTo(r, -r); ctx.stroke(); ctx.shadowBlur = 0;
   }
   ctx.restore();
 }
 function drawPickup(p) {
   ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.spin);
-  if (p.type === 'star') { ctx.shadowColor = '#fff078'; ctx.shadowBlur = 16 * S; ctx.fillStyle = rg(0, 0, 2, 20, ['#fffbe0', '#fff078', '#f2b705']); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
+  if (p.type === 'star') { ctx.shadowColor = '#fff078'; ctx.shadowBlur = 16 * S * GL; ctx.fillStyle = rg(0, 0, 2, 20, ['#fffbe0', '#fff078', '#f2b705']); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath();
     for (let i = 0; i < 8; i++) { const a = -Math.PI / 2 + i * Math.PI / 4, r = i % 2 ? 7 : 20; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); } ctx.closePath(); ctx.fill(); ctx.stroke(); }
   else if (p.type === 'fuel') { ctx.fillStyle = lg(-11, 0, 11, 0, ['#ffc45e', '#f2a33b', '#b36b17']); ctx.strokeStyle = '#ffe1a4'; ctx.lineWidth = 2; ctx.fillRect(-11, -15, 22, 30); ctx.strokeRect(-11, -15, 22, 30);
     ctx.fillStyle = '#573b22'; ctx.fillRect(-5, -20, 10, 5); ctx.fillStyle = '#fff0b0'; ctx.font = 'bold 13px monospace'; ctx.fillText('F', -4, 5); }
-  else { ctx.strokeStyle = '#d9a1ff'; ctx.lineWidth = 5; ctx.shadowColor = '#b86aff'; ctx.shadowBlur = 18 * S; ctx.beginPath(); ctx.moveTo(-12, -17); ctx.lineTo(3, -3); ctx.lineTo(-4, 1); ctx.lineTo(12, 17); ctx.stroke(); }
+  else { ctx.strokeStyle = '#d9a1ff'; ctx.lineWidth = 5; ctx.shadowColor = '#b86aff'; ctx.shadowBlur = 18 * S * GL; ctx.beginPath(); ctx.moveTo(-12, -17); ctx.lineTo(3, -3); ctx.lineTo(-4, 1); ctx.lineTo(12, 17); ctx.stroke(); }
   ctx.restore();
 }
 
@@ -507,7 +541,6 @@ function render() {
   drawSea();
   if (mode === 'freeroam') {
     islands.forEach(drawIsland); buoys.forEach(drawBuoy); drawWakes();
-    const vis = fresh();
     if (!vis.length && net.kind !== 'online') bots.forEach(b => drawBoat({ ...b, chat: '' }, b.x, b.y, b.angle, false));
     vis.forEach(p => drawBoat(p, p.rx, p.ry, p.ra, false));
     drawBoat(boat, boat.x, boat.y, boat.angle, true);
@@ -515,7 +548,7 @@ function render() {
     ctx.fillStyle = '#071326'; ctx.fillRect(20, 18, 270, 14); ctx.fillStyle = lg(22, 0, 288, 0, ['#28d4ee', '#7ceaff']); ctx.fillRect(22, 20, 266 * Math.min(1, progress / goal), 10);
     ctx.strokeStyle = '#8aefff'; ctx.lineWidth = 1; ctx.strokeRect(20, 18, 270, 14); ctx.fillStyle = '#c9efff'; ctx.font = '12px Courier New'; ctx.fillText('LEVEL PROGRESS', 20, 48);
     hazards.forEach(drawHazard); pickups.forEach(drawPickup);
-    ctx.save(); ctx.shadowColor = '#ff2424'; ctx.shadowBlur = 18 * S;
+    ctx.save(); ctx.shadowColor = '#ff2424'; ctx.shadowBlur = 18 * S * GL;
     lasers.forEach(l => { ctx.fillStyle = lg(l.x, 0, l.x + 31, 0, ['#ff2525', '#ff7070']); ctx.fillRect(l.x, l.y - 3, 31, 6); ctx.fillStyle = '#ffd0d0'; ctx.fillRect(l.x + 5, l.y - 1, 21, 2); });
     ctx.restore(); drawShip();
     parts.forEach(p => { ctx.globalAlpha = Math.max(0, p.life / 28); ctx.fillStyle = p.c; circ(p.x, p.y, 2.5); ctx.fill(); }); ctx.globalAlpha = 1;
@@ -528,10 +561,14 @@ function render() {
     if (sinking && running) { ctx.fillStyle = '#fff'; ctx.font = 'bold 18px Courier New'; ctx.fillText('HULL BREACHED — SINKING...', W / 2, 90); }
     ctx.textAlign = 'left';
   }
-  ctx.fillStyle = rg(W / 2, H / 2, H * .45, H * .95, ['rgba(0,5,15,0)', 'rgba(0,5,15,.5)']); ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(vigC, 0, 0, W, H);
 }
+let lastDraw = 0, acc = 0, nAcc = 0;
 function loop(t) {
-  const dt = Math.min(40, t - (last || t)); last = t; frame++;
+  if (t - lastDraw < 12) { requestAnimationFrame(loop); return; }   // cap ~60fps on 120/144Hz screens
+  const dt = Math.min(40, t - (last || t)); last = t; lastDraw = t; frame++;
+  if (gfxMode === 'AUTO' && tier < 3 && frame > 120) { acc += dt; if (++nAcc >= 90) { if (acc / nAcc > 21) applyTier(tier + 1); acc = 0; nAcc = 0; } }   // too slow -> lower quality
+  vis = fresh();
   mode === 'freeroam' ? updateFree(dt) : updateClassic(dt); render(); requestAnimationFrame(loop);
 }
 
@@ -555,6 +592,7 @@ $('rooms').onclick = e => { const b = e.target.closest('[data-room]'); if (b) se
 document.querySelectorAll('[data-close]').forEach(b => b.onclick = () => b.closest('.ov').classList.add('hidden'));
 document.querySelectorAll('.menuBtn').forEach(b => b.onclick = openMenu);
 document.querySelectorAll('.soundBtn').forEach(b => b.onclick = () => { soundOn = !soundOn; document.querySelectorAll('.soundBtn').forEach(x => x.textContent = 'SOUND: ' + (soundOn ? 'ON' : 'OFF')); });
+document.querySelectorAll('.gfxBtn').forEach(b => b.onclick = () => { gfxMode = gfxMode === 'AUTO' ? 'HIGH' : gfxMode === 'HIGH' ? 'LOW' : 'AUTO'; applyTier(gfxMode === 'LOW' ? 3 : 0); nAcc = acc = 0; document.querySelectorAll('.gfxBtn').forEach(x => x.textContent = 'GFX: ' + gfxMode); });
 $('startFree').onclick = () => switchMode('freeroam'); $('startClassic').onclick = () => switchMode('classic');
 $('serversBtn').onclick = () => { renderRooms(); show('serverModal', true); }; $('controlsBtn').onclick = () => show('controlsModal', true);
 $('adminQuickBtn').onclick = () => show('adminModal', true);
@@ -564,7 +602,10 @@ $('colorInput').oninput = e => { boat.color = e.target.value; $('colorLabel').te
 $('chatForm').onsubmit = e => { e.preventDefault(); sendChat($('chatInput').value); $('chatInput').value = ''; $('chatInput').blur(); };
 document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => setWeather(b.dataset.w, false));
 $('annBtn').onclick = () => { const v = $('annInput').value.trim().slice(0, 80); if (!v) return; logChat('📢 BROADCAST', v, '#ff4444'); net.event({ type: 'announce', text: v, from: myId, t: Date.now() }); $('annInput').value = ''; };
-$('adminList').onclick = e => { const b = e.target.closest('[data-kick]'); if (!b) return; players.delete(b.dataset.kick); net.event({ type: 'kick', target: b.dataset.kick, from: myId, t: Date.now() }); logChat('ADMIN', 'Player removed.', '#ff6b6b'); updateNetUI(); };
+function renderBans() { $('banList').innerHTML = bans.size ? [...bans.values()].map(b => `<div class="pl"><span>🚫 <b>${esc(b.name || '?')}</b> [${esc(String(b.uid).slice(0, 5))}]</span><button class="btn" data-unban="${esc(b.uid)}">UNBAN</button></div>`).join('') : '<div class="mut">No bans.</div>'; }
+$('banList').onclick = e => { const u = e.target.closest('[data-unban]'); if (u) net.unban(u.dataset.unban); };
+$('skipLogin').onclick = () => show('loginModal', false); $('netBadge').onclick = () => { if (net.kind !== 'online' && window.MY_FIREBASE_CONFIG) show('loginModal', true); };
+$('adminList').onclick = e => { const bb = e.target.closest('[data-ban]'); if (bb) { const p = players.get(bb.dataset.ban); if (confirm('Ban ' + (p ? p.name : 'this player') + ' permanently?')) { net.ban(bb.dataset.ban, p ? p.name : ''); players.delete(bb.dataset.ban); logChat('ADMIN', 'Player banned.', '#ff6b6b'); updateNetUI(); } return; } const b = e.target.closest('[data-kick]'); if (!b) return; players.delete(b.dataset.kick); net.event({ type: 'kick', target: b.dataset.kick, from: myId, t: Date.now() }); logChat('ADMIN', 'Player removed.', '#ff6b6b'); updateNetUI(); };
 
 addEventListener('keydown', e => {
   const typing = document.activeElement.tagName === 'INPUT';
@@ -579,13 +620,13 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { keys[e.key.length > 1 ? e.key : e.key.toLowerCase()] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
-if (/ADMIN822|ADMIN=822/i.test(location.href)) { isAdmin = true; show('adminQuickBtn', true); }
+renderBans();
 $('hudName').textContent = boat.name.toUpperCase();
-renderRooms(); updateNetUI();
+renderRooms(); updateNetUI(); applyTier(0);
 requestAnimationFrame(loop);
 (async () => {
   let ok = false;
-  try { ok = await Promise.race([connectFirebase(), new Promise(r => setTimeout(() => r(false), 8000))]); } catch (e) { console.warn('Firebase unavailable:', e); }
+  try { ok = await connectFirebase(); } catch (e) { console.warn('Firebase unavailable:', e); }
   if (!ok && net.kind === 'solo') connectTabs();
   push(true); updateNetUI();
 })();
